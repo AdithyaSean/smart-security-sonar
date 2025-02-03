@@ -1,24 +1,20 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
+#include <ESP8266WebServer.h>
 
 // Wi-Fi credentials
 const char* ssid = "WIFI_SSID";
 const char* password = "WIFI_PASSWORD";
 const char* host = "RASPBERRY_PI_IP";
-const int port = 2003;  // Default to first preferred port
+const int port = "RASPBERRY_PI_PORT";
 
 // Ultrasonic sensor pins
-const int TRIG_PIN = D1;
-const int ECHO_PIN = D2;
+const int TRIG_PIN = D9;
+const int ECHO_PIN = D8;
 const int DISTANCE_THRESHOLD = 50; // Distance threshold in cm
 
 // Operation mode
 bool SIMULATION_MODE = true; // Set to false when using real sensor
-
-// Simulation variables
-unsigned long simulationStartTime = 0;
-const unsigned long SIMULATION_DURATION = 5000; // 5 seconds
-bool simulationActive = false;
 
 // Previous state
 bool previousState = false;
@@ -26,40 +22,46 @@ bool previousState = false;
 // Modify constants
 const int MAX_RETRIES = 3;  // Maximum HTTP request retries
 
+// Add WebServer
+ESP8266WebServer server(81);
+
+// Add stream state handler
+void handleStream() {
+    String response = String(previousState ? "1" : "0");
+    server.send(200, "text/plain", response);
+}
+
+// Add timer constant
+const unsigned long MODE_CHECK_INTERVAL = 10000; // 10 seconds
+unsigned long lastModeCheck = 0;
+
 void setup() {
-    Serial.begin(115200);
+    Serial.begin(115200);  // Make sure Serial Monitor matches this baud rate
+    delay(2000);  // Wait for serial to initialize
+    Serial.println("\n\nStarting Sonar Sensor...");  // Startup message
     
-    // Connect to WiFi
-    WiFi.begin(ssid, password);
-    Serial.print("Connecting to Wi-Fi");
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
-    Serial.println("\nConnected to WiFi!");
-    
-    // Set pin modes
+    // Visual feedback
     pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, HIGH);  // Turn on LED
+    
     pinMode(TRIG_PIN, OUTPUT);
     pinMode(ECHO_PIN, INPUT);
     
-    // Check operation mode once during setup
-    if (WiFi.status() == WL_CONNECTED) {
-        HTTPClient http;
-        WiFiClient client;
-        String url = String("http://") + host + ":" + String(port) + "/mode";
-        
-        http.begin(client, url);
-        int httpResponseCode = http.GET();
-        
-        if (httpResponseCode > 0) {
-            String response = http.getString();
-            SIMULATION_MODE = (response.indexOf("simulation") > -1);
-        }
-        http.end();
+    // Connect to WiFi with feedback
+    Serial.printf("Connecting to WiFi: %s\n", ssid);
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+        digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));  // Toggle LED
+        delay(500);
+        Serial.print(".");
     }
+    digitalWrite(LED_BUILTIN, LOW);  // Turn off LED
+    Serial.printf("\nConnected! IP: %s\n", WiFi.localIP().toString().c_str());
     
-    Serial.println("Mode: " + String(SIMULATION_MODE ? "Simulation" : "Sensor"));
+    // Setup web server
+    server.on("/stream", handleStream);
+    server.begin();
+    Serial.println("HTTP server running on port 81");
 }
 
 void ensureWiFiConnection() {
@@ -151,14 +153,17 @@ void handleRealSensor() {
 
 // Update loop with longer interval
 void loop() {
-    if (WiFi.status() == WL_CONNECTED) {
-        if (SIMULATION_MODE) {
-            handleSimulation();
-        } else {
-            handleRealSensor();
-        }
+    server.handleClient();
+    
+    if (SIMULATION_MODE) {
+        handleSimulation();
     } else {
-        ensureWiFiConnection();
+        handleRealSensor();
+        // Debug distance readings
+        if (millis() % 1000 == 0) {  // Print every second
+            Serial.printf("Distance: %.2f cm\n", getDistance());
+        }
     }
-    delay(100); // Prevent watchdog timer issues
+    
+    delay(100);
 }
