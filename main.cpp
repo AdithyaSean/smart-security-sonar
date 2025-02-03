@@ -20,6 +20,9 @@ unsigned long simulationStartTime = 0;
 const unsigned long SIMULATION_DURATION = 5000; // 5 seconds
 bool simulationActive = false;
 
+// Previous state
+bool previousState = false;
+
 void setup() {
     Serial.begin(115200);
     
@@ -64,32 +67,24 @@ bool checkOperationMode() {
     return true; // Default to simulation mode if can't connect
 }
 
-void sendData() {
+void sendData(bool detected) {
     if (WiFi.status() == WL_CONNECTED) {
         HTTPClient http;
         WiFiClient client;
-        
-        // Construct the URL with port
         String url = String("http://") + host + ":" + String(port) + "/sensor_data";
         
         http.begin(client, url);
         http.addHeader("Content-Type", "application/json");
         
-        // Create simple JSON string
-        String jsonString = "{\"value\":1}";
+        // Send 1 for detected, 0 for not detected
+        String jsonString = "{\"value\":" + String(detected ? "1" : "0") + "}";
         
-        // Send POST request
         int httpResponseCode = http.POST(jsonString);
         
         if (httpResponseCode > 0) {
-            String response = http.getString();
-            Serial.println("HTTP Response code: " + String(httpResponseCode));
-            Serial.println("Response: " + response);
-            digitalWrite(LED_BUILTIN, HIGH);  // Indicate successful send
+            digitalWrite(LED_BUILTIN, HIGH);
             delay(100);
             digitalWrite(LED_BUILTIN, LOW);
-        } else {
-            Serial.println("Error on sending POST: " + String(httpResponseCode));
         }
         
         http.end();
@@ -108,27 +103,30 @@ float getDistance() {
 }
 
 void handleSimulation() {
-    // Send 1s for 5 seconds straight
+    static unsigned long lastStateChange = 0;
     unsigned long currentTime = millis();
     
-    if (!simulationActive) {
-        simulationStartTime = currentTime;
-        simulationActive = true;
-        for (int i = 0; i < 5; i++) {  // Send 5 times during the 5 seconds
-            sendData();
-            delay(1000);
-        }
-        simulationActive = false;
-        delay(5000);  // Wait 5 seconds before next cycle
+    // Change state every 5 seconds
+    if (currentTime - lastStateChange >= 5000) {
+        previousState = !previousState;  // Toggle state
+        sendData(previousState);
+        Serial.printf("Simulation: Object %s\n", 
+                     previousState ? "detected" : "removed");
+        lastStateChange = currentTime;
     }
 }
 
 void handleRealSensor() {
     float distance = getDistance();
+    bool currentState = (distance < DISTANCE_THRESHOLD);
     
-    if (distance < DISTANCE_THRESHOLD) {
-        sendData();
-        Serial.printf("Object detected at %.2f cm\n", distance);
+    // Only send data when state changes
+    if (currentState != previousState) {
+        sendData(currentState);
+        Serial.printf("Object %s at %.2f cm\n", 
+                     currentState ? "detected" : "removed",
+                     distance);
+        previousState = currentState;
     }
     
     delay(100);  // Small delay to prevent flooding
