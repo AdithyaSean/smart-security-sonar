@@ -13,7 +13,7 @@ const int ECHO_PIN = D2;
 const int DISTANCE_THRESHOLD = 50; // Distance threshold in cm
 
 // Operation mode
-const bool SIMULATION_MODE = true; // Set to false when using real sensor
+bool SIMULATION_MODE = true; // Set to false when using real sensor
 
 // Simulation variables
 unsigned long simulationStartTime = 0;
@@ -37,6 +37,31 @@ void setup() {
         pinMode(TRIG_PIN, OUTPUT);
         pinMode(ECHO_PIN, INPUT);
     }
+
+    // Check initial operation mode
+    SIMULATION_MODE = checkOperationMode();
+    Serial.println("Operation mode: " + String(SIMULATION_MODE ? "Running in simulation mode" : "Running in sensor mode"));
+}
+
+bool checkOperationMode() {
+    if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http;
+        WiFiClient client;
+        
+        String url = String("http://") + host + ":" + String(port) + "/mode";
+        
+        http.begin(client, url);
+        int httpResponseCode = http.GET();
+        
+        if (httpResponseCode > 0) {
+            String response = http.getString();
+            http.end();
+            return response.indexOf("simulation") > 0;
+        }
+        
+        http.end();
+    }
+    return true; // Default to simulation mode if can't connect
 }
 
 void sendData() {
@@ -110,14 +135,23 @@ void handleRealSensor() {
 }
 
 void loop() {
-    if (WiFi.status() == WL_CONNECTED) {
-        if (SIMULATION_MODE) {
-            handleSimulation();
-        } else {
-            handleRealSensor();
-        }
-    } else {
-        Serial.println("WiFi Disconnected");
-        delay(1000);
-    }
+  static unsigned long lastModeCheck = 0;
+  unsigned long currentTime = millis();
+
+  if (currentTime - lastModeCheck > 60000) {  // Check every minute
+      SIMULATION_MODE = checkOperationMode();
+      Serial.println("Operation mode: " + String(SIMULATION_MODE ? "Running in simulation mode" : "Running in sensor mode"));
+      lastModeCheck = currentTime;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+      if (SIMULATION_MODE) {
+          handleSimulation();
+      } else {
+          handleRealSensor();
+      }
+  } else {
+      Serial.println("WiFi Disconnected");
+      delay(1000);
+  }
 }
