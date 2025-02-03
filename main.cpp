@@ -24,7 +24,6 @@ bool simulationActive = false;
 bool previousState = false;
 
 // Modify constants
-const unsigned long MODE_CHECK_INTERVAL = 600000;  // 10 minutes in milliseconds
 const int MAX_RETRIES = 3;  // Maximum HTTP request retries
 
 void setup() {
@@ -160,15 +159,6 @@ void handleRealSensor() {
 
 // Update loop with longer interval
 void loop() {
-    static unsigned long lastModeCheck = 0;
-    unsigned long currentTime = millis();
-
-    if (currentTime - lastModeCheck > MODE_CHECK_INTERVAL) {
-        SIMULATION_MODE = checkOperationMode();
-        Serial.println("Operation mode: " + String(SIMULATION_MODE ? "Simulation" : "Sensor"));
-        lastModeCheck = currentTime;
-    }
-
     if (WiFi.status() == WL_CONNECTED) {
         if (SIMULATION_MODE) {
             handleSimulation();
