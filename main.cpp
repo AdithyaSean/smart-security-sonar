@@ -23,6 +23,10 @@ bool simulationActive = false;
 // Previous state
 bool previousState = false;
 
+// Modify constants
+const unsigned long MODE_CHECK_INTERVAL = 600000;  // 10 minutes in milliseconds
+const int MAX_RETRIES = 3;  // Maximum HTTP request retries
+
 void setup() {
     Serial.begin(115200);
     
@@ -67,26 +71,48 @@ bool checkOperationMode() {
     return true; // Default to simulation mode if can't connect
 }
 
+void ensureWiFiConnection() {
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.print("Reconnecting to WiFi");
+        WiFi.begin(ssid, password);
+        int attempts = 0;
+        while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+            delay(500);
+            Serial.print(".");
+            attempts++;
+        }
+        Serial.println();
+    }
+}
+
+// Update sendData with retries
 void sendData(bool detected) {
+    ensureWiFiConnection();
+    
     if (WiFi.status() == WL_CONNECTED) {
         HTTPClient http;
         WiFiClient client;
-        String url = String("http://") + host + ":" + String(port) + "/sensor_data";
+        int retries = 0;
         
-        http.begin(client, url);
-        http.addHeader("Content-Type", "application/json");
-        
-        // Send 1 for detected, 0 for not detected
-        String jsonString = "{\"value\":" + String(detected ? "1" : "0") + "}";
-        
-        int httpResponseCode = http.POST(jsonString);
-        
-        if (httpResponseCode > 0) {
-            digitalWrite(LED_BUILTIN, HIGH);
-            delay(100);
-            digitalWrite(LED_BUILTIN, LOW);
+        while (retries < MAX_RETRIES) {
+            String url = String("http://") + host + ":" + String(port) + "/sensor_data";
+            http.begin(client, url);
+            http.addHeader("Content-Type", "application/json");
+            
+            String jsonString = "{\"value\":" + String(detected ? "1" : "0") + "}";
+            int httpResponseCode = http.POST(jsonString);
+            
+            if (httpResponseCode > 0) {
+                digitalWrite(LED_BUILTIN, HIGH);
+                delay(100);
+                digitalWrite(LED_BUILTIN, LOW);
+                http.end();
+                return;
+            }
+            
+            retries++;
+            delay(1000);
         }
-        
         http.end();
     }
 }
@@ -132,24 +158,24 @@ void handleRealSensor() {
     delay(100);  // Small delay to prevent flooding
 }
 
+// Update loop with longer interval
 void loop() {
-  static unsigned long lastModeCheck = 0;
-  unsigned long currentTime = millis();
+    static unsigned long lastModeCheck = 0;
+    unsigned long currentTime = millis();
 
-  if (currentTime - lastModeCheck > 60000) {  // Check every minute
-      SIMULATION_MODE = checkOperationMode();
-      Serial.println("Operation mode: " + String(SIMULATION_MODE ? "Running in simulation mode" : "Running in sensor mode"));
-      lastModeCheck = currentTime;
-  }
+    if (currentTime - lastModeCheck > MODE_CHECK_INTERVAL) {
+        SIMULATION_MODE = checkOperationMode();
+        Serial.println("Operation mode: " + String(SIMULATION_MODE ? "Simulation" : "Sensor"));
+        lastModeCheck = currentTime;
+    }
 
-  if (WiFi.status() == WL_CONNECTED) {
-      if (SIMULATION_MODE) {
-          handleSimulation();
-      } else {
-          handleRealSensor();
-      }
-  } else {
-      Serial.println("WiFi Disconnected");
-      delay(1000);
-  }
+    if (WiFi.status() == WL_CONNECTED) {
+        if (SIMULATION_MODE) {
+            handleSimulation();
+        } else {
+            handleRealSensor();
+        }
+    } else {
+        ensureWiFiConnection();
+    }
 }
