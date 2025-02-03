@@ -29,6 +29,7 @@ const int MAX_RETRIES = 3;  // Maximum HTTP request retries
 void setup() {
     Serial.begin(115200);
     
+    // Connect to WiFi
     WiFi.begin(ssid, password);
     Serial.print("Connecting to Wi-Fi");
     while (WiFi.status() != WL_CONNECTED) {
@@ -37,23 +38,15 @@ void setup() {
     }
     Serial.println("\nConnected to WiFi!");
     
+    // Set pin modes
     pinMode(LED_BUILTIN, OUTPUT);
+    pinMode(TRIG_PIN, OUTPUT);
+    pinMode(ECHO_PIN, INPUT);
     
-    if (!SIMULATION_MODE) {
-        pinMode(TRIG_PIN, OUTPUT);
-        pinMode(ECHO_PIN, INPUT);
-    }
-
-    // Check initial operation mode
-    SIMULATION_MODE = checkOperationMode();
-    Serial.println("Operation mode: " + String(SIMULATION_MODE ? "Running in simulation mode" : "Running in sensor mode"));
-}
-
-bool checkOperationMode() {
+    // Check operation mode once during setup
     if (WiFi.status() == WL_CONNECTED) {
         HTTPClient http;
         WiFiClient client;
-        
         String url = String("http://") + host + ":" + String(port) + "/mode";
         
         http.begin(client, url);
@@ -61,13 +54,12 @@ bool checkOperationMode() {
         
         if (httpResponseCode > 0) {
             String response = http.getString();
-            http.end();
-            return response.indexOf("simulation") > 0;
+            SIMULATION_MODE = (response.indexOf("simulation") > -1);
         }
-        
         http.end();
     }
-    return true; // Default to simulation mode if can't connect
+    
+    Serial.println("Mode: " + String(SIMULATION_MODE ? "Simulation" : "Sensor"));
 }
 
 void ensureWiFiConnection() {
@@ -168,4 +160,5 @@ void loop() {
     } else {
         ensureWiFiConnection();
     }
+    delay(100); // Prevent watchdog timer issues
 }
