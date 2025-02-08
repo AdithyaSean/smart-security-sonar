@@ -25,9 +25,10 @@ const int MAX_RETRIES = 3;  // Maximum HTTP request retries
 // Add WebServer
 ESP8266WebServer server(81);
 
-// Add stream state handler
+// Simple state handler - returns current detection state
 void handleStream() {
-    String response = String(previousState ? "1" : "0");
+    bool currentState = detectMotion();  // Get real-time detection
+    String response = String(currentState ? "1" : "0");
     server.send(200, "text/plain", response);
 }
 
@@ -155,15 +156,28 @@ void handleRealSensor() {
 void loop() {
     server.handleClient();
     
-    if (SIMULATION_MODE) {
-        handleSimulation();
+    bool detected = detectMotion();
+    if (detected) {
+        Serial.println("Motion detected!");
+        digitalWrite(LED_BUILTIN, LOW);  // LED on
     } else {
-        handleRealSensor();
-        // Debug distance readings
-        if (millis() % 1000 == 0) {  // Print every second
-            Serial.printf("Distance: %.2f cm\n", getDistance());
-        }
+        digitalWrite(LED_BUILTIN, HIGH); // LED off
     }
     
-    delay(100);
+    delay(100);  // Small delay to prevent overwhelming the serial output
+}
+
+bool detectMotion() {
+    // Trigger the sonar
+    digitalWrite(TRIG_PIN, LOW);
+    delayMicroseconds(2);
+    digitalWrite(TRIG_PIN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIG_PIN, LOW);
+    
+    // Read the response
+    long duration = pulseIn(ECHO_PIN, HIGH);
+    float distance = duration * 0.034 / 2;
+    
+    return distance < DISTANCE_THRESHOLD;
 }
