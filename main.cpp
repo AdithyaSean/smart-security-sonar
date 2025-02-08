@@ -3,14 +3,14 @@
 #include <ESP8266WebServer.h>
 
 // Wi-Fi credentials
-const char* ssid = "WIFI_SSID";
-const char* password = "WIFI_PASSWORD";
-const char* host = "RASPBERRY_PI_IP";
-const int port = "RASPBERRY_PI_PORT";
+const char* ssid = "Adithya";
+const char* password = "adalanane";
+const char* host = "192.168.174.231";
+const int port = 2003;
 
 // Ultrasonic sensor pins
-const int TRIG_PIN = D9;
-const int ECHO_PIN = D8;
+const int TRIG_PIN = D8;
+const int ECHO_PIN = D9;
 const int DISTANCE_THRESHOLD = 50; // Distance threshold in cm
 
 // Operation mode
@@ -25,10 +25,9 @@ const int MAX_RETRIES = 3;  // Maximum HTTP request retries
 // Add WebServer
 ESP8266WebServer server(81);
 
-// Simple state handler - returns current detection state
+// Add stream state handler
 void handleStream() {
-    bool currentState = detectMotion();  // Get real-time detection
-    String response = String(currentState ? "1" : "0");
+    String response = String(previousState ? "1" : "0");
     server.send(200, "text/plain", response);
 }
 
@@ -131,7 +130,7 @@ void handleSimulation() {
         previousState = !previousState;  // Toggle state
         sendData(previousState);
         Serial.printf("Simulation: Object %s\n", 
-                     previousState ? "detected" : "removed");
+                     previousState ? "detected" : "detected");
         lastStateChange = currentTime;
     }
 }
@@ -144,7 +143,7 @@ void handleRealSensor() {
     if (currentState != previousState) {
         sendData(currentState);
         Serial.printf("Object %s at %.2f cm\n", 
-                     currentState ? "detected" : "removed",
+                     currentState ? "detected" : "detected",
                      distance);
         previousState = currentState;
     }
@@ -156,28 +155,15 @@ void handleRealSensor() {
 void loop() {
     server.handleClient();
     
-    bool detected = detectMotion();
-    if (detected) {
-        Serial.println("Motion detected!");
-        digitalWrite(LED_BUILTIN, LOW);  // LED on
+    if (SIMULATION_MODE) {
+        handleSimulation();
     } else {
-        digitalWrite(LED_BUILTIN, HIGH); // LED off
+        handleRealSensor();
+        // Debug distance readings
+        if (millis() % 1000 == 0) {  // Print every second
+            Serial.printf("Distance: %.2f cm\n", getDistance());
+        }
     }
     
-    delay(100);  // Small delay to prevent overwhelming the serial output
-}
-
-bool detectMotion() {
-    // Trigger the sonar
-    digitalWrite(TRIG_PIN, LOW);
-    delayMicroseconds(2);
-    digitalWrite(TRIG_PIN, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(TRIG_PIN, LOW);
-    
-    // Read the response
-    long duration = pulseIn(ECHO_PIN, HIGH);
-    float distance = duration * 0.034 / 2;
-    
-    return distance < DISTANCE_THRESHOLD;
+    delay(100);
 }
