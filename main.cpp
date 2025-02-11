@@ -3,10 +3,10 @@
 #include <ESP8266WebServer.h>
 
 // Wi-Fi credentials
-const char* ssid = "Adithya";
-const char* password = "adalanane";
-const char* host = "192.168.174.231";
-const int port = 2003;
+const char* ssid = "SSID";
+const char* password = "PASSWORD";
+const char* host = "192.168.100.1";
+const int port = "PORT";
 
 // Ultrasonic sensor pins
 const int TRIG_PIN = D8;
